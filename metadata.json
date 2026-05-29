@@ -1,0 +1,6 @@
+{
+  "name": "Reserva Roxou",
+  "description": "Aplicativo privado para agendamento, orçamento e atendimento de motorista particular.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
