@@ -481,11 +481,11 @@ fun ProfileSwapperDialog(
                 // Profile 1: Passageiro
                 ProfileSelectItem(
                     title = "Passageiro (Cliente)",
-                    summary = "Maurício Souza • Solicitar, ver estimativa, chat",
+                    summary = "Passageiro Particular • Solicitar, ver estimativa, chat",
                     icon = Icons.Default.Person,
                     isSelected = currentUser?.role == "passageiro",
                     onClick = {
-                        viewModel.selectProfile("passageiro_id", "Maurício Souza", "mauricio@gmail.com", "passageiro")
+                        viewModel.selectProfile("active_user_id", "Passageiro Roxou", "noturnocszapps@gmail.com", "passageiro")
                         onSwitched("passageiro")
                     }
                 )
@@ -495,11 +495,11 @@ fun ProfileSwapperDialog(
                 // Profile 2: Motorista Admin
                 ProfileSelectItem(
                     title = "Motorista Particular (Admin)",
-                    summary = "Rax • Aprovar valores, gerenciar agenda, configurar preços",
+                    summary = "Administrador • Aprovar valores, gerenciar agenda, configurar preços",
                     icon = Icons.Default.Shield,
                     isSelected = currentUser?.role == "admin",
                     onClick = {
-                        viewModel.selectProfile("admin_id", "Rax - Motorista", "atendimento@roxou.com.br", "admin")
+                        viewModel.selectProfile("admin_id", "Administrador Roxou", "contato.fh3@gmail.com", "admin")
                         onSwitched("admin")
                     }
                 )
@@ -509,11 +509,11 @@ fun ProfileSwapperDialog(
                 // Profile 3: Motorista Parceiro
                 ProfileSelectItem(
                     title = "Preposto / Motorista Parceiro",
-                    summary = "Felipe Azevedo • Atender corridas atribuídas pelo Admin",
+                    summary = "Motorista Parceiro • Atender corridas atribuídas pelo Admin",
                     icon = Icons.Default.DirectionsCar,
                     isSelected = currentUser?.role == "parceiro",
                     onClick = {
-                        viewModel.selectProfile("driver_partner_id", "Felipe Azevedo", "felipe.motorista@luxo.com", "parceiro")
+                        viewModel.selectProfile("driver_partner_id", "Motorista Parceiro", "parceiro@roxou.com.br", "parceiro")
                         onSwitched("parceiro")
                     }
                 )
@@ -764,7 +764,7 @@ fun LoginScreen(
                 Row(
                     modifier = Modifier.clickable {
                         // Directly trigger admin flow with seeded contacto.fh3 account or toggle swapper
-                        handleSignIn("admin_id", "Felipe Azevedo (Rax)", "contato.fh3@gmail.com", "admin")
+                        handleSignIn("admin_id", "Administrador Roxou", "contato.fh3@gmail.com", "admin")
                     }
                 ) {
                     Text(
@@ -816,14 +816,14 @@ fun LoginScreen(
                     // Account Option 1: Admin Seed
                     Button(
                         onClick = {
-                            handleSignIn("admin_id", "Felipe Azevedo", "contato.fh3@gmail.com", "admin")
+                            handleSignIn("admin_id", "Administrador Roxou", "contato.fh3@gmail.com", "admin")
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0x1F9C27B0)),
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Felipe Azevedo (Rax)", color = RoxouPrimaryLight, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Administrador Roxou", color = RoxouPrimaryLight, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             Text("contato.fh3@gmail.com (ADMIN)", color = RoxouOnlineGreen, fontSize = 11.sp)
                         }
                     }
@@ -840,21 +840,6 @@ fun LoginScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text("Noturno CSZ (Você)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                             Text("noturnocszapps@gmail.com (PASSAGEIRO)", color = RoxouGrayText, fontSize = 11.sp)
-                        }
-                    }
-
-                    // Account Option 3: Default Seed Passenger
-                    Button(
-                        onClick = {
-                            handleSignIn("passageiro_id", "Maurício Souza", "mauricio@gmail.com", "passenger")
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = RoxouSurfaceVariant),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("Maurício Souza", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                            Text("mauricio@gmail.com (PASSAGEIRO)", color = RoxouGrayText, fontSize = 11.sp)
                         }
                     }
 

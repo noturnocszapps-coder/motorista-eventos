@@ -58,8 +58,8 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
             // Boot values
             repository.ensurePrepopulatedData()
             
-            // Set default login profile to passenger initially
-            _currentUser.value = Profile("passageiro_id", "Maurício Souza", "mauricio@gmail.com", "passageiro")
+            // Set default login profile to empty initially
+            _currentUser.value = null
 
             // Realtime / Sync looping
             launch {
@@ -131,7 +131,7 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
             repository.approveQuote(id, finalPrice)
             // Add automated system messages to assist UX
             val text = "Orçamento APROVADO pelo motorista! Valor final de R$ %.2f confirmado.".format(finalPrice)
-            repository.sendMessage(id, "admin_id", "Rax", "admin", text)
+            repository.sendMessage(id, "admin_id", _currentUser.value?.name ?: "Administrador", "admin", text)
         }
     }
 
@@ -139,7 +139,7 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
         viewModelScope.launch {
             repository.rejectQuote(id, reason)
             val text = "Orçamento recusado pelo seguinte motivo: $reason"
-            repository.sendMessage(id, "admin_id", "Rax", "admin", text)
+            repository.sendMessage(id, "admin_id", _currentUser.value?.name ?: "Administrador", "admin", text)
         }
     }
 
@@ -152,7 +152,7 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
                 "cancelada" -> "Esta reserva foi cancelada pelo motorista."
                 else -> "O status da viagem foi alterado para: ${status.uppercase()}."
             }
-            repository.sendMessage(id, "admin_id", "Rax", "admin", text)
+            repository.sendMessage(id, "admin_id", _currentUser.value?.name ?: "Administrador", "admin", text)
 
             // Dynamic live tracking loop trigger
             manageLiveTrackingLoop(id, status)
@@ -163,7 +163,7 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
         viewModelScope.launch {
             repository.confirmPayment(id, confirmed)
             if (confirmed) {
-                repository.sendMessage(id, "admin_id", "Rax", "admin", "Sinal de pagamento identificado e confirmado!")
+                repository.sendMessage(id, "admin_id", _currentUser.value?.name ?: "Administrador", "admin", "Sinal de pagamento identificado e confirmado!")
             }
         }
     }
@@ -176,7 +176,7 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
             } else {
                 "Viagem designada de volta ao motorista principal."
             }
-            repository.sendMessage(id, "admin_id", "Rax", "admin", msg)
+            repository.sendMessage(id, "admin_id", _currentUser.value?.name ?: "Administrador", "admin", msg)
         }
     }
 
@@ -281,7 +281,7 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
                 val destGeo = MapRoutingService.geocodeLocation(requestModel.destination)
                 
                 val driverId = requestModel.assignedDriverId ?: "admin_id"
-                val driverName = requestModel.assignedDriverName ?: "Rax (Você - Motorista)"
+                val driverName = requestModel.assignedDriverName ?: (_currentUser.value?.name ?: "Administrador")
 
                 // Step 1: Simulate driver a_caminho (moving to passenger)
                 for (step in 0..5) {

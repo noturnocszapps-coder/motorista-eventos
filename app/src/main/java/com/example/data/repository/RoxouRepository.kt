@@ -299,7 +299,6 @@ class RoxouRepository(
 
     // High fidelity data bootstrapping
     suspend fun ensurePrepopulatedData() {
-        // Prepopulate standard profiles
         val currentSettings = dao.getSettings().firstOrNull()
         if (currentSettings == null) {
             // Seed Settings
@@ -307,81 +306,8 @@ class RoxouRepository(
             // Seed Status
             dao.insertStatus(DriverStatus(status = "online"))
             
-            // Seed Default Profiles
-            dao.insertProfile(Profile("passageiro_id", "Maurício Souza", "mauricio@gmail.com", "passageiro"))
-            dao.insertProfile(Profile("admin_id", "Rax (Você - Motorista)", "atendimento@roxou.com.br", "admin"))
-            dao.insertProfile(Profile("driver_partner_id", "Felipe Azevedo", "felipe.motorista@luxo.com", "parceiro"))
-
-            // Seed Driver Partners
-            dao.insertPartner(DriverPartner("driver_partner_id", "Felipe Azevedo", "ativo", 4.9, "felipe.motorista@luxo.com", "(11) 98888-7777"))
-            dao.insertPartner(DriverPartner("driver_partner_2_id", "Camila Santos", "ativo", 4.8, "camila.santos@luxo.com", "(11) 97777-6666"))
-
-            // Seed Some Ride Requests
-            val r1Id = "ride_req_1"
-            dao.insertRideRequest(
-                RideRequest(
-                    id = r1Id,
-                    passengerName = "Maurício Souza",
-                    passengerEmail = "mauricio@gmail.com",
-                    origin = "Aeroporto Comercial (G9)",
-                    destination = "Hotel Grand Palace Centro",
-                    dateTime = "30/05/2026 às 19:30",
-                    tripType = "ida_volta",
-                    passengerCount = 2,
-                    notes = "Preciso de bagageiro limpo para 2 malas grandes.",
-                    status = "pendente",
-                    priceEstimate = 120.0,
-                    finalPrice = 120.0,
-                    estimatedKm = 24.5
-                )
-            )
-
-            val r2Id = "ride_req_2"
-            dao.insertRideRequest(
-                RideRequest(
-                    id = r2Id,
-                    passengerName = "Mariana Alencar",
-                    passengerEmail = "mariana@gmail.com",
-                    origin = "Residencial Alphaville",
-                    destination = "Centro de Convenções",
-                    dateTime = "29/05/2026 às 10:00",
-                    tripType = "ida",
-                    passengerCount = 1,
-                    notes = "Motorista silencioso, por favor.",
-                    status = "confirmada",
-                    priceEstimate = 85.0,
-                    finalPrice = 90.0,
-                    estimatedKm = 18.0,
-                    paymentConfirmed = true
-                )
-            )
-
-            val r3Id = "ride_req_3"
-            dao.insertRideRequest(
-                RideRequest(
-                    id = r3Id,
-                    passengerName = "Carlos Mendes",
-                    passengerEmail = "carlos@comercial.com",
-                    origin = "Escritório Central",
-                    destination = "Clube de Campo Privado",
-                    dateTime = "28/05/2026 às 21:00",
-                    tripType = "ida_volta",
-                    passengerCount = 3,
-                    notes = "Retorno previsto às 02h da manhã.",
-                    status = "concluída",
-                    priceEstimate = 145.0,
-                    finalPrice = 160.0,
-                    estimatedKm = 22.0,
-                    paymentConfirmed = true
-                )
-            )
-
-            // Seed Chat Messages
-            dao.insertMessage(RideMessage(requestId = r1Id, senderId = "passageiro_id", senderName = "Maurício Souza", senderRole = "passageiro", message = "Olá, o vôo está previsto para pousar no horário regulamentado."))
-            dao.insertMessage(RideMessage(requestId = r1Id, senderId = "admin_id", senderName = "Rax", senderRole = "admin", message = "Excelente, Maurício! Fique tranquilo, estarei monitorando o painel de voos. Aguardo no local combinado."))
-
-            dao.insertMessage(RideMessage(requestId = r2Id, senderId = "passageiro_id", senderName = "Mariana Alencar", senderRole = "passageiro", message = "O pagamento via Pix de 50% de sinal já foi enviado."))
-            dao.insertMessage(RideMessage(requestId = r2Id, senderId = "admin_id", senderName = "Rax", senderRole = "admin", message = "Pagamento confirmado com sucesso, Mariana! Reserva 100% garantida."))
+            // Seed Only Requested Admin Profile
+            dao.insertProfile(Profile("admin_id", "Administrador Roxou", "contato.fh3@gmail.com", "admin"))
         }
     }
 }
