@@ -31,11 +31,11 @@ class RoxouRepository(
     fun getRequestsForDriver(driverId: String): Flow<List<RideRequest>> =
         dao.getRequestsForDriver(driverId)
 
-    fun getRequestById(id: Int): Flow<RideRequest?> = dao.getRequestById(id)
+    fun getRequestById(id: String): Flow<RideRequest?> = dao.getRequestById(id)
 
-    fun getMessagesForRide(requestId: Int): Flow<List<RideMessage>> = dao.getMessagesForRide(requestId)
+    fun getMessagesForRide(requestId: String): Flow<List<RideMessage>> = dao.getMessagesForRide(requestId)
 
-    fun getLiveLocationForRide(requestId: Int): Flow<DriverLiveLocation?> = dao.getLiveLocationForRide(requestId)
+    fun getLiveLocationForRide(requestId: String): Flow<DriverLiveLocation?> = dao.getLiveLocationForRide(requestId)
 
     suspend fun insertProfile(profile: Profile) {
         dao.insertProfile(profile)
@@ -45,8 +45,48 @@ class RoxouRepository(
         dao.insertSettings(settings)
     }
 
+    // ONLINE SUPABASE DATABASE SYNC
+    suspend fun syncWithSupabase() {
+        if (!SupabaseService.isConfigured) return
+        try {
+            // 1. Sync All Requests
+            val remoteRequests = SupabaseService.fetchAllRideRequests()
+            if (remoteRequests.isNotEmpty()) {
+                remoteRequests.forEach { req ->
+                    dao.insertRideRequest(req)
+                }
+            }
+
+            // 2. Sync Driver Status
+            val remoteDriverStatus = SupabaseService.fetchLatestDriverStatus()
+            dao.insertStatus(DriverStatus(status = remoteDriverStatus, lastUpdated = System.currentTimeMillis()))
+        } catch (e: Exception) {
+            Log.e(TAG, "syncWithSupabase generic error: ${e.message}")
+        }
+    }
+
+    // ONLINE CHAT SYNC
+    suspend fun syncChatMessages(rideId: String) {
+        if (!SupabaseService.isConfigured) return
+        try {
+            val remoteChats = SupabaseService.fetchRideMessages(rideId)
+            if (remoteChats.isNotEmpty()) {
+                remoteChats.forEach { msg ->
+                    dao.insertMessage(msg)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "syncChatMessages error for ride $rideId: ${e.message}")
+        }
+    }
+
     suspend fun updateStatus(status: String) {
         dao.insertStatus(DriverStatus(status = status, lastUpdated = System.currentTimeMillis()))
+        repoScope.launch {
+            if (SupabaseService.isConfigured) {
+                SupabaseService.updateDriverStatus(status)
+            }
+        }
     }
 
     // Live tracking updates & notifications
@@ -76,7 +116,7 @@ class RoxouRepository(
         }
     }
 
-    suspend fun deleteLiveLocation(requestId: Int) {
+    suspend fun deleteLiveLocation(requestId: String) {
         dao.deleteLiveLocation(requestId)
         repoScope.launch {
             SupabaseService.deleteDriverLiveLocation(requestId)
@@ -93,7 +133,7 @@ class RoxouRepository(
         passengerCount: Int,
         notes: String,
         estimatedDistance: Double
-    ): Int {
+    ): String {
         // Fetch active settings or use defaults
         val activeSettings = dao.getSettings().firstOrNull() ?: DriverSettings()
         
@@ -105,7 +145,10 @@ class RoxouRepository(
             passengerCount = passengerCount
         )
 
+        val newId = java.util.UUID.randomUUID().toString()
+
         val newRequest = RideRequest(
+            id = newId,
             passengerName = passengerName,
             passengerEmail = passengerEmail,
             origin = origin,
@@ -120,12 +163,11 @@ class RoxouRepository(
             estimatedKm = estimatedDistance
         )
 
-        val newId = dao.insertRideRequest(newRequest).toInt()
-        val syncedRequest = newRequest.copy(id = newId)
+        dao.insertRideRequest(newRequest)
 
         // Dynamic Supabase insertion & Push notification
         repoScope.launch {
-            SupabaseService.insertRideRequest(syncedRequest)
+            SupabaseService.insertRideRequest(newRequest)
         }
 
         RoxouNotificationManager.sendPushNotification(
@@ -137,7 +179,7 @@ class RoxouRepository(
         return newId
     }
 
-    suspend fun updateRequestStatus(id: Int, status: String) {
+    suspend fun updateRequestStatus(id: String, status: String) {
         dao.updateRequestStatus(id, status)
         
         repoScope.launch {
@@ -171,11 +213,11 @@ class RoxouRepository(
         }
     }
 
-    suspend fun approveQuote(id: Int, finalPrice: Double) {
+    suspend fun approveQuote(id: String, finalPrice: Double) {
         dao.approveRequest(id, "aprovada", finalPrice)
         
         repoScope.launch {
-            SupabaseService.updateRideRequestStatus(id, "aprovada")
+            SupabaseService.approveRideRequest(id, "aprovada", finalPrice)
             RoxouNotificationManager.sendPushNotification(
                 context,
                 "Seu Orçamento foi Aprovado!",
@@ -184,11 +226,11 @@ class RoxouRepository(
         }
     }
 
-    suspend fun rejectQuote(id: Int, reason: String) {
+    suspend fun rejectQuote(id: String, reason: String) {
         dao.rejectRequest(id, "recusada", reason)
         
         repoScope.launch {
-            SupabaseService.updateRideRequestStatus(id, "recusada")
+            SupabaseService.rejectRideRequest(id, "recusada", reason)
             RoxouNotificationManager.sendPushNotification(
                 context,
                 "Solicitação de Orçamento Recusada",
@@ -197,11 +239,28 @@ class RoxouRepository(
         }
     }
 
-    suspend fun confirmPayment(id: Int, confirmed: Boolean) = dao.updatePaymentStatus(id, confirmed)
+    suspend fun confirmPayment(id: String, confirmed: Boolean) {
+        dao.updatePaymentStatus(id, confirmed)
+        repoScope.launch {
+            SupabaseService.updateRidePaymentStatus(id, confirmed)
+            if (confirmed) {
+                RoxouNotificationManager.sendPushNotification(
+                    context,
+                    "Pagamento Confirmado!",
+                    "O sinal de pagamento de 50% foi identificado com sucesso."
+                )
+            }
+        }
+    }
 
-    suspend fun assignDriver(id: Int, driverId: String?, driverName: String?) = dao.assignDriver(id, driverId, driverName)
+    suspend fun assignDriver(id: String, driverId: String?, driverName: String?) {
+        dao.assignDriver(id, driverId, driverName)
+        repoScope.launch {
+            SupabaseService.assignDriverToRide(id, driverId, driverName)
+        }
+    }
 
-    suspend fun sendMessage(requestId: Int, senderId: String, senderName: String, senderRole: String, messageText: String) {
+    suspend fun sendMessage(requestId: String, senderId: String, senderName: String, senderRole: String, messageText: String) {
         val msg = RideMessage(
             requestId = requestId,
             senderId = senderId,
@@ -210,6 +269,10 @@ class RoxouRepository(
             message = messageText
         )
         dao.insertMessage(msg)
+
+        repoScope.launch {
+            SupabaseService.insertRideMessage(msg)
+        }
 
         RoxouNotificationManager.sendPushNotification(
             context,
@@ -224,24 +287,14 @@ class RoxouRepository(
 
     // Pricing estimation algorithm strictly matching specified client preferences
     fun calculateEstimate(km: Double, settings: DriverSettings, tripType: String, passengerCount: Int): Double {
-        var cost = settings.minPrice
+        val factor = if (tripType == "ida_volta") 2.0 else 1.0
+        val effectiveKm = km * factor
+        val pricePerKm = 2.50
+        val bookingFee = 20.00
+        val minPrice = 30.00
         
-        // Cost per km
-        val distanceCost = km * settings.pricePerKm
-        cost = max(cost, distanceCost)
-
-        // Ida e volta
-        if (tripType == "ida_volta") {
-            cost += settings.roundTripFee
-        }
-
-        // Additional passengers cost (if exceeds 2, dynamic add small charge)
-        if (passengerCount > 2) {
-            cost += (passengerCount - 2) * 5.0
-        }
-
-        // Base price can never be less than absolute minimum
-        return max(cost, settings.minPrice)
+        val rawValue = (effectiveKm * pricePerKm) + bookingFee
+        return if (rawValue < minPrice) minPrice else rawValue
     }
 
     // High fidelity data bootstrapping
@@ -264,12 +317,14 @@ class RoxouRepository(
             dao.insertPartner(DriverPartner("driver_partner_2_id", "Camila Santos", "ativo", 4.8, "camila.santos@luxo.com", "(11) 97777-6666"))
 
             // Seed Some Ride Requests
-            val r1Id = dao.insertRideRequest(
+            val r1Id = "ride_req_1"
+            dao.insertRideRequest(
                 RideRequest(
+                    id = r1Id,
                     passengerName = "Maurício Souza",
                     passengerEmail = "mauricio@gmail.com",
-                    origin = "Aeroporto de Congonhas (CGH), SP",
-                    destination = "Hotel Hilton Blue, Av. Nações Unidas",
+                    origin = "Aeroporto Comercial (G9)",
+                    destination = "Hotel Grand Palace Centro",
                     dateTime = "30/05/2026 às 19:30",
                     tripType = "ida_volta",
                     passengerCount = 2,
@@ -279,14 +334,16 @@ class RoxouRepository(
                     finalPrice = 120.0,
                     estimatedKm = 24.5
                 )
-            ).toInt()
+            )
 
-            val r2Id = dao.insertRideRequest(
+            val r2Id = "ride_req_2"
+            dao.insertRideRequest(
                 RideRequest(
+                    id = r2Id,
                     passengerName = "Mariana Alencar",
                     passengerEmail = "mariana@gmail.com",
-                    origin = "Rua Augusta 1500, Consolação",
-                    destination = "Shopping Iguatemi Alphaville",
+                    origin = "Residencial Alphaville",
+                    destination = "Centro de Convenções",
                     dateTime = "29/05/2026 às 10:00",
                     tripType = "ida",
                     passengerCount = 1,
@@ -297,14 +354,16 @@ class RoxouRepository(
                     estimatedKm = 18.0,
                     paymentConfirmed = true
                 )
-            ).toInt()
+            )
 
-            val r3Id = dao.insertRideRequest(
+            val r3Id = "ride_req_3"
+            dao.insertRideRequest(
                 RideRequest(
+                    id = r3Id,
                     passengerName = "Carlos Mendes",
                     passengerEmail = "carlos@comercial.com",
-                    origin = "Berrini Palace, Brooklin",
-                    destination = "Espaço das Américas, Barra Funda",
+                    origin = "Escritório Central",
+                    destination = "Clube de Campo Privado",
                     dateTime = "28/05/2026 às 21:00",
                     tripType = "ida_volta",
                     passengerCount = 3,
@@ -315,7 +374,7 @@ class RoxouRepository(
                     estimatedKm = 22.0,
                     paymentConfirmed = true
                 )
-            ).toInt()
+            )
 
             // Seed Chat Messages
             dao.insertMessage(RideMessage(requestId = r1Id, senderId = "passageiro_id", senderName = "Maurício Souza", senderRole = "passageiro", message = "Olá, o vôo está previsto para pousar no horário regulamentado."))

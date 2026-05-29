@@ -1,16 +1,21 @@
 package com.example.ui.viewmodel
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.entities.*
 import com.example.data.repository.MapRoutingService
 import com.example.data.repository.RoxouRepository
+import com.example.data.repository.SupabaseService
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
+
+    private val TAG = "RoxouViewModel"
 
     // Manage active simulation user
     private val _currentUser = MutableStateFlow<Profile?>(null)
@@ -30,7 +35,10 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Active live tracking simulator jobs mapped by Ride ID
-    private val activeLiveJobs = mutableMapOf<Int, Job>()
+    private val activeLiveJobs = mutableMapOf<String, Job>()
+
+    // Active single background chat sync job (for the currently opened conversation screen)
+    private var activeChatJob: Pair<String, Job>? = null
 
     // Filter requests reactively based on active user
     val activeUserRequests: StateFlow<List<RideRequest>> = combine(
@@ -40,8 +48,8 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
         when {
             user == null -> emptyList()
             user.role == "admin" -> requests
-            user.role == "parceiro" -> requests.filter { it.assignedDriverId == user.id }
-            else -> requests.filter { it.passengerEmail == user.email }
+            user.role == "parceiro" || user.role == "driver" -> requests // admin and drivers see all requests temporarily while there's only one driver
+            else -> requests.filter { it.passengerEmail.trim().lowercase() == user.email.trim().lowercase() }
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -52,15 +60,38 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
             
             // Set default login profile to passenger initially
             _currentUser.value = Profile("passageiro_id", "Maurício Souza", "mauricio@gmail.com", "passageiro")
+
+            // Realtime / Sync looping
+            launch {
+                while (true) {
+                    try {
+                        repository.syncWithSupabase()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Periodic sync error: ${e.message}")
+                    }
+                    delay(3000)
+                }
+            }
         }
     }
 
-    // Swapping profile identities during simulation
-    fun selectProfile(id: String, name: String, email: String, role: String) {
+    // Swapping profile identities during simulation / real auth
+    fun selectProfile(id: String, name: String, email: String, role: String, onComplete: (Boolean) -> Unit = {}) {
         viewModelScope.launch {
-            val profile = Profile(id, name, email, role)
-            repository.insertProfile(profile)
-            _currentUser.value = profile
+            val success = SupabaseService.signUpOrSignIn(email, name, role)
+            if (success) {
+                val finalId = SupabaseService.sessionUserId ?: id
+                val finalRole = SupabaseService.sessionUserRole ?: role
+                val finalName = SupabaseService.sessionUserName ?: name
+                val profile = Profile(finalId, finalName, email, finalRole)
+                repository.insertProfile(profile)
+                _currentUser.value = profile
+                onComplete(true)
+            } else {
+                onComplete(false)
+            }
         }
     }
 
@@ -95,16 +126,16 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
         }
     }
 
-    fun approveQuote(id: Int, finalPrice: Double) {
+    fun approveQuote(id: String, finalPrice: Double) {
         viewModelScope.launch {
             repository.approveQuote(id, finalPrice)
             // Add automated system messages to assist UX
-            val text = "Orçamento APROVADO pelo motorista particular! Valor final de R$ %.2f confirmado.".format(finalPrice)
+            val text = "Orçamento APROVADO pelo motorista! Valor final de R$ %.2f confirmado.".format(finalPrice)
             repository.sendMessage(id, "admin_id", "Rax", "admin", text)
         }
     }
 
-    fun rejectQuote(id: Int, reason: String) {
+    fun rejectQuote(id: String, reason: String) {
         viewModelScope.launch {
             repository.rejectQuote(id, reason)
             val text = "Orçamento recusado pelo seguinte motivo: $reason"
@@ -112,7 +143,7 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
         }
     }
 
-    fun updateRequestStatus(id: Int, status: String) {
+    fun updateRequestStatus(id: String, status: String) {
         viewModelScope.launch {
             repository.updateRequestStatus(id, status)
             val text = when (status) {
@@ -128,7 +159,7 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
         }
     }
 
-    fun setPaymentConfirmed(id: Int, confirmed: Boolean) {
+    fun setPaymentConfirmed(id: String, confirmed: Boolean) {
         viewModelScope.launch {
             repository.confirmPayment(id, confirmed)
             if (confirmed) {
@@ -137,7 +168,7 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
         }
     }
 
-    fun assignDriver(id: Int, driver: DriverPartner?) {
+    fun assignDriver(id: String, driver: DriverPartner?) {
         viewModelScope.launch {
             repository.assignDriver(id, driver?.id, driver?.name)
             val msg = if (driver != null) {
@@ -149,7 +180,7 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
         }
     }
 
-    fun sendChatMessage(requestId: Int, message: String) {
+    fun sendChatMessage(requestId: String, message: String) {
         val user = _currentUser.value ?: return
         if (message.isBlank()) return
         viewModelScope.launch {
@@ -190,16 +221,43 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
         }
     }
 
-    // Expose message flow for active chat detail
-    fun getMessagesForRide(requestId: Int): Flow<List<RideMessage>> {
+    // Expose message flow for active chat detail (with periodic remote synchronization)
+    fun getMessagesForRide(requestId: String): Flow<List<RideMessage>> {
+        val currentJob = activeChatJob
+        if (currentJob == null || currentJob.first != requestId) {
+            currentJob?.second?.cancel()
+            val job = viewModelScope.launch {
+                while (true) {
+                    try {
+                        repository.syncChatMessages(requestId)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Chat sync loop error: ${e.message}")
+                    }
+                    delay(3000)
+                }
+            }
+            activeChatJob = Pair(requestId, job)
+        }
         return repository.getMessagesForRide(requestId)
     }
 
-    fun getRequestById(id: Int): Flow<RideRequest?> {
+    // Stop active background chat message synchronization loop when conversation screen is closed/disposed
+    fun stopChatSync(requestId: String) {
+        val currentJob = activeChatJob
+        if (currentJob != null && currentJob.first == requestId) {
+            currentJob.second.cancel()
+            activeChatJob = null
+            Log.i(TAG, "Chat sync loop successfully stopped and cancelled for request: $requestId")
+        }
+    }
+
+    fun getRequestById(id: String): Flow<RideRequest?> {
         return repository.getRequestById(id)
     }
 
-    fun getLiveLocationForRide(requestId: Int): Flow<DriverLiveLocation?> {
+    fun getLiveLocationForRide(requestId: String): Flow<DriverLiveLocation?> {
         return repository.getLiveLocationForRide(requestId)
     }
 
@@ -210,7 +268,7 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
     }
 
     // 4. SISTEMA DE RASTREAMENTO AO VIVO (SIMULADOR DINÂMICO CENTRAL)
-    private fun manageLiveTrackingLoop(requestId: Int, status: String) {
+    private fun manageLiveTrackingLoop(requestId: String, status: String) {
         // Cancel existing job for this request if any
         activeLiveJobs[requestId]?.cancel()
         activeLiveJobs.remove(requestId)
@@ -291,5 +349,7 @@ class RoxouViewModel(private val repository: RoxouRepository) : ViewModel() {
         super.onCleared()
         activeLiveJobs.values.forEach { it.cancel() }
         activeLiveJobs.clear()
+        activeChatJob?.second?.cancel()
+        activeChatJob = null
     }
 }

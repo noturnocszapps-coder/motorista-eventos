@@ -15,7 +15,7 @@ import com.example.data.entities.*
         DriverPartner::class,
         DriverLiveLocation::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

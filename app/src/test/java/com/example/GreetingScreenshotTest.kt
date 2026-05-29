@@ -2,6 +2,7 @@ package com.example
 
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.sp
 import com.example.ui.theme.MyApplicationTheme
 import com.github.takahirom.roborazzi.RobolectricDeviceQualifiers
 import com.github.takahirom.roborazzi.captureRoboImage
@@ -27,7 +28,7 @@ class GreetingScreenshotTest {
           text = "Reserva Roxou Motorista",
           color = androidx.compose.ui.graphics.Color.White,
           fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-          fontSize = androidx.compose.ui.unit.sp(24)
+          fontSize = 24.sp
         )
       }
     }

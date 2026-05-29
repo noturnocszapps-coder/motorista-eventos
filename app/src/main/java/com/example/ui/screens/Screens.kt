@@ -59,11 +59,11 @@ fun RoxouAppPortal(viewModel: RoxouViewModel) {
     val driverSettings by viewModel.driverSettings.collectAsStateWithLifecycle()
 
     var currentScreen by remember { mutableStateOf("login") }
-    var selectedRideIdForDetail by remember { mutableStateOf<Int?>(null) }
+    var selectedRideIdForDetail by remember { mutableStateOf<String?>(null) }
     var showProfileSelectionMenu by remember { mutableStateOf(false) }
 
     // Navigation lists inside active scopes
-    val passengerTab = remember { mutableStateOf("solicitar") }
+    val passengerTab = remember { mutableStateOf("home") }
     val adminTab = remember { mutableStateOf("dashboard") }
 
     Scaffold(
@@ -161,6 +161,27 @@ fun RoxouAppPortal(viewModel: RoxouViewModel) {
                                 .navigationBarsPadding()
                         ) {
                             NavigationBarItem(
+                                selected = passengerTab.value == "home",
+                                onClick = {
+                                    passengerTab.value = "home"
+                                    currentScreen = "passenger_portal"
+                                },
+                                icon = { 
+                                    Icon(
+                                        imageVector = Icons.Default.Home, 
+                                        contentDescription = "Início"
+                                    ) 
+                                },
+                                label = { Text("Início", fontWeight = FontWeight.Bold, fontSize = 10.sp) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = RoxouPrimaryLight,
+                                    selectedTextColor = RoxouPrimaryLight,
+                                    indicatorColor = Color.White.copy(alpha = 0.05f),
+                                    unselectedIconColor = RoxouGrayText,
+                                    unselectedTextColor = RoxouGrayText
+                                )
+                            )
+                            NavigationBarItem(
                                 selected = passengerTab.value == "solicitar",
                                 onClick = {
                                     passengerTab.value = "solicitar"
@@ -168,7 +189,7 @@ fun RoxouAppPortal(viewModel: RoxouViewModel) {
                                 },
                                 icon = { 
                                     Icon(
-                                        imageVector = if (passengerTab.value == "solicitar") Icons.Default.AddCircle else Icons.Default.AddCircle, 
+                                        imageVector = Icons.Default.AddCircle, 
                                         contentDescription = "Solicitar"
                                     ) 
                                 },
@@ -189,7 +210,7 @@ fun RoxouAppPortal(viewModel: RoxouViewModel) {
                                 },
                                 icon = { 
                                     Icon(
-                                        imageVector = if (passengerTab.value == "reservas") Icons.Default.History else Icons.Default.History, 
+                                        imageVector = Icons.Default.History, 
                                         contentDescription = "Reservas"
                                     ) 
                                 },
@@ -322,17 +343,21 @@ fun RoxouAppPortal(viewModel: RoxouViewModel) {
                         currentScreen = "partner_portal"
                     } else {
                         currentScreen = "passenger_portal"
-                        passengerTab.value = "solicitar"
+                        passengerTab.value = "home"
                     }
                 }, viewModel = viewModel)
 
                 "passenger_portal" -> {
-                    if (passengerTab.value == "solicitar") {
-                        PassengerRequestScreen(viewModel = viewModel, onRequestCreated = {
+                    when (passengerTab.value) {
+                        "home" -> PassengerHomeScreen(
+                            viewModel = viewModel,
+                            onNavigateToRequest = { passengerTab.value = "solicitar" },
+                            onNavigateToReservations = { passengerTab.value = "reservas" }
+                        )
+                        "solicitar" -> PassengerRequestScreen(viewModel = viewModel, onRequestCreated = {
                             passengerTab.value = "reservas"
                         })
-                    } else {
-                        PassengerReservationsScreen(viewModel = viewModel, onSelectRide = { id ->
+                        else -> PassengerReservationsScreen(viewModel = viewModel, onSelectRide = { id ->
                             selectedRideIdForDetail = id
                             currentScreen = "ride_detail"
                         })
@@ -405,7 +430,7 @@ fun RoxouAppPortal(viewModel: RoxouViewModel) {
                             currentScreen = "partner_portal"
                         } else {
                             currentScreen = "passenger_portal"
-                            passengerTab.value = "solicitar"
+                            passengerTab.value = "home"
                         }
                     }
                 )
@@ -577,6 +602,33 @@ fun LoginScreen(
     viewModel: RoxouViewModel
 ) {
     var loading by remember { mutableStateOf(false) }
+    var showAccountChooser by remember { mutableStateOf(false) }
+    var showCustomAccountInput by remember { mutableStateOf(false) }
+    
+    var customName by remember { mutableStateOf("") }
+    var customEmail by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf("") }
+
+    val handleSignIn: (String, String, String, String) -> Unit = { id, name, email, role ->
+        showAccountChooser = false
+        showCustomAccountInput = false
+        loading = true
+        errorMessage = ""
+        
+        viewModel.selectProfile(id, name, email, role) { success ->
+            loading = false
+            if (success) {
+                val user = viewModel.currentUser.value
+                val finalRole = user?.role ?: role
+                onLoginSuccess(finalRole)
+            } else {
+                errorMessage = "Falha ao conectar com o Supabase. Usando modo de simulação local."
+                viewModel.selectProfile(id, name, email, role) { _ ->
+                    onLoginSuccess(role)
+                }
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -634,7 +686,7 @@ fun LoginScreen(
             )
 
             Text(
-                text = "Sistema privado para agendamento de agenda, orçamentos e atendimento personalizado. Sem tarifas flutuantes indesejáveis.",
+                text = "Sistema privado online para agendamentos, orçamentos e atendimento particular. Perfeito para manter passageiro e motorista sincronizados.",
                 fontSize = 13.sp,
                 color = RoxouGrayText,
                 textAlign = TextAlign.Center,
@@ -655,8 +707,8 @@ fun LoginScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 // Key value assertions
                 LoginFeatureRow(icon = Icons.Default.Lock, text = "Canal 100% privado e fechado")
-                LoginFeatureRow(icon = Icons.Default.CheckCircle, text = "Reserve com antecedência garantida")
-                LoginFeatureRow(icon = Icons.Default.AccountBalanceWallet, text = "Preços acordados previamente")
+                LoginFeatureRow(icon = Icons.Default.CheckCircle, text = "Sincronização em Tempo Real (Supabase)")
+                LoginFeatureRow(icon = Icons.Default.AccountBalanceWallet, text = "Preços calculados na regra oficial")
             }
         }
 
@@ -665,15 +717,24 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.padding(bottom = 20.dp)
         ) {
+            if (errorMessage.isNotEmpty()) {
+                Text(
+                    text = errorMessage,
+                    color = RoxouPrimaryLight,
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
+
             if (loading) {
                 CircularProgressIndicator(color = RoxouPrimary)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text("Autenticando via Supabase Auth...", color = RoxouGrayText, fontSize = 12.sp)
             } else {
                 Button(
                     onClick = {
-                        loading = true
-                        // Simulates auth handshake and logs in as passenger default
-                        viewModel.selectProfile("passageiro_id", "Maurício Souza", "mauricio@gmail.com", "passageiro")
-                        onLoginSuccess("passageiro")
+                        showAccountChooser = true
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -683,7 +744,6 @@ fun LoginScreen(
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Drawing custom G-Google Icon representation
                         Icon(
                             imageVector = Icons.Default.AccountCircle,
                             contentDescription = "Google Logo Mock",
@@ -703,9 +763,8 @@ fun LoginScreen(
 
                 Row(
                     modifier = Modifier.clickable {
-                        // Quick shortcut for driver login to bypass passenger state
-                        viewModel.selectProfile("admin_id", "Rax - Motorista", "atendimento@roxou.com.br", "admin")
-                        onLoginSuccess("admin")
+                        // Directly trigger admin flow with seeded contacto.fh3 account or toggle swapper
+                        handleSignIn("admin_id", "Felipe Azevedo (Rax)", "contato.fh3@gmail.com", "admin")
                     }
                 ) {
                     Text(
@@ -719,6 +778,172 @@ fun LoginScreen(
                         fontWeight = FontWeight.Bold,
                         color = RoxouPrimaryLight
                     )
+                }
+            }
+        }
+    }
+
+    // Dynamic Google Account Chooser Dialog
+    if (showAccountChooser) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showAccountChooser = false }) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = RoxouSurface),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, RoxouDivider),
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Fazer login com o Google",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Text(
+                        text = "Escolha um perfil para testar a sincronização online real:",
+                        fontSize = 13.sp,
+                        color = RoxouGrayText,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(bottom = 20.dp)
+                    )
+
+                    // Account Option 1: Admin Seed
+                    Button(
+                        onClick = {
+                            handleSignIn("admin_id", "Felipe Azevedo", "contato.fh3@gmail.com", "admin")
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0x1F9C27B0)),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Felipe Azevedo (Rax)", color = RoxouPrimaryLight, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("contato.fh3@gmail.com (ADMIN)", color = RoxouOnlineGreen, fontSize = 11.sp)
+                        }
+                    }
+
+                    // Account Option 2: Active User Email
+                    Button(
+                        onClick = {
+                            handleSignIn("active_user_id", "Noturno CSZ", "noturnocszapps@gmail.com", "passenger")
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = RoxouSurfaceVariant),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Noturno CSZ (Você)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("noturnocszapps@gmail.com (PASSAGEIRO)", color = RoxouGrayText, fontSize = 11.sp)
+                        }
+                    }
+
+                    // Account Option 3: Default Seed Passenger
+                    Button(
+                        onClick = {
+                            handleSignIn("passageiro_id", "Maurício Souza", "mauricio@gmail.com", "passenger")
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = RoxouSurfaceVariant),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Maurício Souza", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("mauricio@gmail.com (PASSAGEIRO)", color = RoxouGrayText, fontSize = 11.sp)
+                        }
+                    }
+
+                    Divider(color = RoxouDivider, modifier = Modifier.padding(vertical = 8.dp))
+
+                    TextButton(
+                        onClick = {
+                            showAccountChooser = false
+                            showCustomAccountInput = true
+                        }
+                    ) {
+                        Text("Usar outra conta Google...", color = RoxouPrimaryLight, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+
+    // Custom Account Input Dialog
+    if (showCustomAccountInput) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showCustomAccountInput = false }) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = RoxouSurface),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, RoxouDivider),
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Configurar conta Google",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = customName,
+                        onValueChange = { customName = it },
+                        label = { Text("Nome Completo") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = RoxouPrimary,
+                            unfocusedBorderColor = RoxouDivider
+                        ),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = customEmail,
+                        onValueChange = { customEmail = it },
+                        label = { Text("E-mail Google") },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = RoxouPrimary,
+                            unfocusedBorderColor = RoxouDivider
+                        ),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = { showCustomAccountInput = false }) {
+                            Text("Cancelar", color = RoxouGrayText)
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                if (customEmail.isNotBlank()) {
+                                    val finalRole = if (customEmail.trim().equals("contato.fh3@gmail.com", ignoreCase = true)) "admin" else "passenger"
+                                    val name = if (customName.isNotBlank()) customName else "Passageiro Extra"
+                                    handleSignIn("custom_user_id_" + System.currentTimeMillis(), name, customEmail.trim().lowercase(), finalRole)
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = RoxouPrimary)
+                        ) {
+                            Text("Confirmar Log In")
+                        }
+                    }
                 }
             }
         }
@@ -750,7 +975,185 @@ fun LoginFeatureRow(icon: ImageVector, text: String) {
 }
 
 // -----------------------------------------------------------------------------
-// 2. PASSAGEIRO: NOVO ORÇAMENTO SCREEN
+// 2. PASSAGEIRO: TELA INICIAL (HOME SCREEN)
+// -----------------------------------------------------------------------------
+
+@Composable
+fun PassengerHomeScreen(
+    viewModel: RoxouViewModel,
+    onNavigateToRequest: () -> Unit,
+    onNavigateToReservations: () -> Unit
+) {
+    val driverStatus by viewModel.driverStatus.collectAsStateWithLifecycle()
+    val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp)
+            .testTag("passenger_home"),
+        verticalArrangement = Arrangement.SpaceBetween,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Upper section: Brand and Greeting
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(top = 24.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(26.dp))
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(RoxouPrimary, RoxouSecondary)
+                        )
+                    )
+                    .size(80.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.DirectionsCar,
+                    contentDescription = "Roxou Logo",
+                    tint = Color.White,
+                    modifier = Modifier.size(44.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Olá, ${currentUser?.name ?: "Ricardo"}",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White
+            )
+
+            Text(
+                text = "Seja bem-vindo ao seu portal de agendamento de motorista particular.",
+                fontSize = 14.sp,
+                color = RoxouGrayText,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(top = 8.dp, start = 8.dp, end = 8.dp)
+            )
+        }
+
+        // Driver Status Section (Online, Ocupado, Offline)
+        Card(
+            colors = CardDefaults.cardColors(containerColor = RoxouSurface),
+            border = BorderStroke(1.dp, RoxouDivider),
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 24.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "STATUS DO MOTORISTA PARTICULAR",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = RoxouGrayText,
+                    letterSpacing = 1.sp
+                )
+                
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val statusColor = when (driverStatus?.status) {
+                        "online" -> RoxouOnlineGreen
+                        "ocupado" -> RoxouBusyOrange
+                        else -> RoxouOfflineGrey
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .background(statusColor)
+                            .size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = when (driverStatus?.status) {
+                            "online" -> "Disponível (Online) para reserva"
+                            "ocupado" -> "Ocupado em atendimento"
+                            else -> "Offline (Indisponível no momento)"
+                        },
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+        }
+
+        // Navigation Actions Buttons
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Button(
+                onClick = onNavigateToRequest,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .testTag("request_quote_entry_button"),
+                colors = ButtonDefaults.buttonColors(containerColor = RoxouPrimary),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.AddCircle,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Solicitar orçamento",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+
+            OutlinedButton(
+                onClick = onNavigateToReservations,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .testTag("my_reservations_entry_button"),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = RoxouPrimaryLight),
+                border = BorderStroke(1.dp, RoxouPrimary),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.History,
+                        contentDescription = null,
+                        tint = RoxouPrimaryLight,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Minhas reservas",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = RoxouPrimaryLight
+                    )
+                }
+            }
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// 3. PASSAGEIRO: NOVO ORÇAMENTO SCREEN
 // -----------------------------------------------------------------------------
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -770,16 +1173,19 @@ fun PassengerRequestScreen(
     var passengerCount by remember { mutableStateOf(1) }
     var notes by remember { mutableStateOf("") }
     
-    // Simulating manual distances before Maps SDK integrations
-    val estimatedDistanceKm by remember(origin, destination) {
+    var estimatedDistanceKmText by remember { mutableStateOf("12.0") }
+    val estimatedDistanceKm by remember(estimatedDistanceKmText) {
         derivedStateOf {
-            if (origin.isNotBlank() && destination.isNotBlank()) {
-                val p1 = com.example.data.repository.MapRoutingService.geocodeLocation(origin)
-                val p2 = com.example.data.repository.MapRoutingService.geocodeLocation(destination)
-                com.example.data.repository.MapRoutingService.calculateDistanceKm(p1, p2)
-            } else {
-                12.0
-            }
+            estimatedDistanceKmText.replace(",", ".").toDoubleOrNull() ?: 12.0
+        }
+    }
+
+    LaunchedEffect(origin, destination) {
+        if (origin.isNotBlank() && destination.isNotBlank()) {
+            val p1 = com.example.data.repository.MapRoutingService.geocodeLocation(origin)
+            val p2 = com.example.data.repository.MapRoutingService.geocodeLocation(destination)
+            val distance = com.example.data.repository.MapRoutingService.calculateDistanceKm(p1, p2)
+            estimatedDistanceKmText = "%.1f".format(distance)
         }
     }
 
@@ -922,80 +1328,6 @@ fun PassengerRequestScreen(
             )
         }
 
-        // INTERACTIVE EVENTS SELECTION (PRIORITY 6 - INTEGRACAO EVENTOS)
-        item {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Eventos Roxou VIP ⚡",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = RoxouPrimaryLight
-                    )
-                    Text(
-                        text = "Destino Rápido",
-                        fontSize = 10.sp,
-                        color = RoxouGrayText
-                    )
-                }
-                
-                com.example.data.repository.MapRoutingService.ROXOU_EVENTS.let { events ->
-                    androidx.compose.foundation.lazy.LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        items(events) { event ->
-                            val isSelected = destination == event.name
-                            Card(
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected) RoxouPrimary.copy(alpha = 0.3f) else RoxouSurface
-                                ),
-                                border = BorderStroke(1.dp, if (isSelected) RoxouPrimaryLight else RoxouDivider),
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier
-                                    .clickable {
-                                        destination = event.name
-                                        if (origin.isBlank()) {
-                                            origin = "Sua Localização Atual (Centro, SP)"
-                                        }
-                                    }
-                                    .width(185.dp)
-                            ) {
-                                Column(modifier = Modifier.padding(10.dp)) {
-                                    Icon(
-                                        imageVector = Icons.Default.Stars,
-                                        contentDescription = null,
-                                        tint = if (isSelected) RoxouPrimaryLight else RoxouOnlineGreen,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = event.name.substringBefore(" ("),
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                    Text(
-                                        text = event.name.substringAfter("(").removeSuffix(")"),
-                                        fontSize = 9.sp,
-                                        color = RoxouGrayText,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
         // Live interactive routing map
         if (origin.isNotBlank() && destination.isNotBlank()) {
             item {
@@ -1022,7 +1354,7 @@ fun PassengerRequestScreen(
                 value = origin,
                 onValueChange = { origin = it },
                 label = { Text("Ponto de Origem") },
-                placeholder = { Text("Ex: Aeroporto de Guarulhos Teminal 2") },
+                placeholder = { Text("Ex: Aeroporto Internacional") },
                 leadingIcon = { Icon(Icons.Default.Place, contentDescription = null, tint = RoxouPrimaryLight) },
                 modifier = Modifier.fillMaxWidth().testTag("origin_input"),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -1042,7 +1374,7 @@ fun PassengerRequestScreen(
                 value = destination,
                 onValueChange = { destination = it },
                 label = { Text("Ponto de Destino") },
-                placeholder = { Text("Ex: Av. Paulista, 1000") },
+                placeholder = { Text("Ex: Hotel Fênix ou Endereço Comercial") },
                 leadingIcon = { Icon(Icons.Default.Navigation, contentDescription = null, tint = RoxouPrimaryLight) },
                 modifier = Modifier.fillMaxWidth().testTag("destination_input"),
                 colors = OutlinedTextFieldDefaults.colors(
@@ -1217,92 +1549,29 @@ fun PassengerRequestScreen(
             }
         }
 
-        // Bypassed legacy slider
-        if (false) 
+        // Manual Distance input representation (PRIORITY 4)
         item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(RoxouSurface)
-                    .border(1.dp, RoxouDivider, RoundedCornerShape(12.dp))
-                    .padding(14.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Distância Aproximada (Simulador)",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = RoxouGrayText
-                    )
-                    Text(
-                        text = "%.1f km".format(estimatedDistanceKm),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = RoxouPrimaryLight
-                    )
-                }
-
-                Slider(
-                    value = estimatedDistanceKm.toFloat(),
-                    onValueChange = { },
-                    valueRange = 2.0f..80.0f,
-                    steps = 78,
-                    colors = SliderDefaults.colors(
-                        thumbColor = RoxouPrimary,
-                        activeTrackColor = RoxouPrimaryLight,
-                        inactiveTrackColor = RoxouSurfaceVariant
-                    ),
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-
-                // High visual shortcuts
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf(1.5 to "Urbana Curta", 18.0 to "Intermunicipal", 24.5 to "Aeroporto", 38.0 to "Litoral").forEach { (v, l) ->
-                        val isSelected = kotlin.math.abs(estimatedDistanceKm - v) < 2.0
-                        Box(
-                            modifier = Modifier
-                                .weight(1.0f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isSelected) RoxouPrimary else RoxouSurfaceVariant)
-                                .clickable {
-                                    when (l) {
-                                        "Urbana Curta" -> {
-                                            origin = "Av. Paulista, Jardins, SP"
-                                            destination = "Rua Augusta 1500, Consolação, SP"
-                                        }
-                                        "Intermunicipal" -> {
-                                            origin = "Berrini, Brooklin, SP"
-                                            destination = "Alphaville, Barueri, SP"
-                                        }
-                                        "Aeroporto" -> {
-                                            origin = "Aeroporto de Congonhas (CGH), SP"
-                                            destination = "Hotel Hilton Blue, Av. Nações Unidas"
-                                        }
-                                        "Litoral" -> {
-                                            origin = "Av. Paulista, Jardins, SP"
-                                            destination = "Roxou Sunset Lounge (Estrada de Itapecerica, km 25)"
-                                        }
-                                    }
-                                }
-                                .padding(vertical = 6.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(l, fontSize = 9.sp, color = RoxouGrayText, maxLines = 1)
-                                Text("%.1f km".format(v), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            }
-                        }
-                    }
-                }
-            }
+            OutlinedTextField(
+                value = estimatedDistanceKmText,
+                onValueChange = { estimatedDistanceKmText = it },
+                label = { Text("Distância Estimada (km)") },
+                placeholder = { Text("Ex: 15.5") },
+                leadingIcon = { Icon(Icons.Default.Map, contentDescription = null, tint = RoxouPrimaryLight) },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                ),
+                modifier = Modifier.fillMaxWidth().testTag("distance_km_input"),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = RoxouPrimary,
+                    unfocusedBorderColor = RoxouDivider,
+                    focusedLabelColor = RoxouPrimaryLight,
+                    unfocusedLabelColor = RoxouGrayText,
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White
+                ),
+                shape = RoundedCornerShape(12.dp)
+            )
         }
 
         // Notes and extra info
@@ -1482,7 +1751,7 @@ fun PassengerRequestScreen(
 @Composable
 fun PassengerReservationsScreen(
     viewModel: RoxouViewModel,
-    onSelectRide: (Int) -> Unit
+    onSelectRide: (String) -> Unit
 ) {
     val activeUserRequests by viewModel.activeUserRequests.collectAsStateWithLifecycle()
 
@@ -1785,7 +2054,7 @@ fun PassengerRideItemCard(
 
 @Composable
 fun RideDetailChatScreen(
-    requestId: Int,
+    requestId: String,
     viewModel: RoxouViewModel,
     onBack: () -> Unit
 ) {
@@ -1806,6 +2075,13 @@ fun RideDetailChatScreen(
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             messageListState.animateScrollToItem(messages.size - 1)
+        }
+    }
+
+    // Stop background chat synchronization loop when leaving this screen
+    DisposableEffect(requestId) {
+        onDispose {
+            viewModel.stopChatSync(requestId)
         }
     }
 
@@ -2126,7 +2402,7 @@ fun RideDetailChatScreen(
 @Composable
 fun AdminDashboardScreen(
     viewModel: RoxouViewModel,
-    onSelectRide: (Int) -> Unit
+    onSelectRide: (String) -> Unit
 ) {
     val allRequests by viewModel.allRequests.collectAsStateWithLifecycle()
     val driverStatus by viewModel.driverStatus.collectAsStateWithLifecycle()
@@ -2771,7 +3047,7 @@ fun AdminDashboardScreen(
 @Composable
 fun AdminAgendaScreen(
     viewModel: RoxouViewModel,
-    onSelectRide: (Int) -> Unit
+    onSelectRide: (String) -> Unit
 ) {
     val allRequests by viewModel.allRequests.collectAsStateWithLifecycle()
     
@@ -3354,7 +3630,7 @@ fun AdminDriversScreen(viewModel: RoxouViewModel) {
 @Composable
 fun PartnerDashboardScreen(
     viewModel: RoxouViewModel,
-    onSelectRide: (Int) -> Unit
+    onSelectRide: (String) -> Unit
 ) {
     val activeUserRequests by viewModel.activeUserRequests.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()

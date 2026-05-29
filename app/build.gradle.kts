@@ -55,7 +55,20 @@ android {
     compose = true
     buildConfig = true
   }
-  testOptions { unitTests { isIncludeAndroidResources = true } }
+  testOptions {
+    unitTests {
+      isIncludeAndroidResources = true
+    }
+  }
+}
+
+tasks.withType<Test> {
+  testLogging {
+    events("passed", "skipped", "failed", "standardOut", "standardError")
+    showExceptions = true
+    showCauses = true
+    showStackTraces = true
+  }
 }
 
 // Configure the Secrets Gradle Plugin to use .env and .env.example files

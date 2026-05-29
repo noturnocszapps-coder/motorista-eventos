@@ -43,32 +43,32 @@ interface RoxouDao {
     fun getRequestsForDriver(driverId: String): Flow<List<RideRequest>>
 
     @Query("SELECT * FROM ride_requests WHERE id = :id LIMIT 1")
-    fun getRequestById(id: Int): Flow<RideRequest?>
+    fun getRequestById(id: String): Flow<RideRequest?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertRideRequest(request: RideRequest): Long
+    suspend fun insertRideRequest(request: RideRequest)
 
     @Update
     suspend fun updateRideRequest(request: RideRequest)
 
     @Query("UPDATE ride_requests SET status = :status WHERE id = :id")
-    suspend fun updateRequestStatus(id: Int, status: String)
+    suspend fun updateRequestStatus(id: String, status: String)
 
     @Query("UPDATE ride_requests SET status = :status, finalPrice = :price WHERE id = :id")
-    suspend fun approveRequest(id: Int, status: String, price: Double)
+    suspend fun approveRequest(id: String, status: String, price: Double)
 
     @Query("UPDATE ride_requests SET status = :status, cancelReason = :reason WHERE id = :id")
-    suspend fun rejectRequest(id: Int, status: String, reason: String)
+    suspend fun rejectRequest(id: String, status: String, reason: String)
 
     @Query("UPDATE ride_requests SET paymentConfirmed = :confirmed WHERE id = :id")
-    suspend fun updatePaymentStatus(id: Int, confirmed: Boolean)
+    suspend fun updatePaymentStatus(id: String, confirmed: Boolean)
 
     @Query("UPDATE ride_requests SET assignedDriverId = :driverId, assignedDriverName = :driverName WHERE id = :id")
-    suspend fun assignDriver(id: Int, driverId: String?, driverName: String?)
+    suspend fun assignDriver(id: String, driverId: String?, driverName: String?)
 
     // Ride Messages (Chat)
     @Query("SELECT * FROM ride_messages WHERE requestId = :requestId ORDER BY timestamp ASC")
-    fun getMessagesForRide(requestId: Int): Flow<List<RideMessage>>
+    fun getMessagesForRide(requestId: String): Flow<List<RideMessage>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: RideMessage)
@@ -85,13 +85,13 @@ interface RoxouDao {
 
     // Driver Live Locations
     @Query("SELECT * FROM driver_live_locations WHERE requestId = :requestId LIMIT 1")
-    fun getLiveLocationForRide(requestId: Int): Flow<DriverLiveLocation?>
+    fun getLiveLocationForRide(requestId: String): Flow<DriverLiveLocation?>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLiveLocation(location: DriverLiveLocation)
 
     @Query("DELETE FROM driver_live_locations WHERE requestId = :requestId")
-    suspend fun deleteLiveLocation(requestId: Int)
+    suspend fun deleteLiveLocation(requestId: String)
 
     @Query("DELETE FROM driver_live_locations WHERE driverId = :driverId")
     suspend fun deleteLiveLocationForDriver(driverId: String)

@@ -15,9 +15,9 @@ data class Profile(
 @Entity(tableName = "driver_settings")
 data class DriverSettings(
     @PrimaryKey val id: Int = 1, // Global single setting
-    val minPrice: Double = 25.0,
-    val pricePerKm: Double = 4.5,
-    val roundTripFee: Double = 15.0,
+    val minPrice: Double = 30.0,
+    val pricePerKm: Double = 2.5,
+    val roundTripFee: Double = 20.0,
     val waitFee: Double = 10.0,
     val nightFee: Double = 12.0,
     val demandFee: Double = 20.0,
@@ -36,7 +36,7 @@ data class DriverStatus(
 
 @Entity(tableName = "ride_requests")
 data class RideRequest(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
     val passengerName: String,
     val passengerEmail: String,
     val origin: String,
@@ -58,8 +58,8 @@ data class RideRequest(
 
 @Entity(tableName = "ride_messages")
 data class RideMessage(
-    @PrimaryKey(autoGenerate = true) val id: Int = 0,
-    val requestId: Int,
+    @PrimaryKey val id: String = java.util.UUID.randomUUID().toString(),
+    val requestId: String,
     val senderId: String,
     val senderName: String,
     val senderRole: String, // "passageiro", "admin", "parceiro"
@@ -84,7 +84,7 @@ data class DriverLiveLocation(
     val latitude: Double,
     val longitude: Double,
     val timestamp: Long = System.currentTimeMillis(),
-    val requestId: Int,
+    val requestId: String,
     val status: String // "a_caminho", "chegou", "em_viagem"
 )
 
